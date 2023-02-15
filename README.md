@@ -24,11 +24,18 @@ bash ./keygen.sh
 bash ./connect.sh
 ```
 
-3. Run this command and copy the public key into outside server
+3. Run this command and copy the public key into outside server file `~/.ssh/authorized_keys`
 
 ```bash
 echo $(cat ./src/root_ssh_key/id_rsa.pub)
 ```
+
+Or you can copy key with this command:
+
+```bash
+ssh-copy-id <YOUR_USERNAME_IN_OUTSIDE_SERVER>@<YOUR_OUSIDE_SERVER> -i ./src/root_ssh_key/id_rsa
+```
+
 
 4. Start the OpenSSH server for tunneling inside
 
@@ -40,7 +47,7 @@ bash ./run.sh
 
 In the first time, you need to go through the all steps.
 
-When you starting in the second time, just feel free to run step 4.
+When you turn on this tunnel in the second time, just feeling free to run step 4.
 
 ## Enter Container
 
