@@ -1,0 +1,31 @@
+
+version: "3.9"
+
+services:
+  openssh-server:
+    restart: unless-stopped
+    image: lscr.io/linuxserver/openssh-server
+    container_name: reverse-inside-tunnel
+    hostname: inside-tunnel #optional
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Taipei
+      #- PUBLIC_KEY=yourpublickey #optional
+      #- PUBLIC_KEY_FILE=/path/to/file #optional
+      #- PUBLIC_KEY_DIR=/home/${USER_NAME}/.ssh #optional
+      #- PUBLIC_KEY_URL=https://github.com/${USER_NAME}.keys #optional
+      - SUDO_ACCESS=true #optional
+      #- PASSWORD_ACCESS=false #optional
+      - USER_PASSWORD=1234 #optional
+      #- USER_PASSWORD_FILE=/path/to/file #optional
+      - USER_NAME=${USER_NAME} #optional
+    volumes:
+      - ./.env:/config/.env
+      - ./logs:/config/logs
+      - ./src/root_ssh_key:/root/.ssh
+      - ./src/user_ssh_key:/home/${USER_NAME}/.ssh
+      - ./src/user_ssh_key:/config/.ssh
+      - ./src/ssh_host_keys:/config/ssh_host_keys
+      - ./src/custom_scripts/custom-cont-init.d:/custom-cont-init.d
+      - ./src/custom_scripts/custom-services.d:/custom-services.d
