@@ -1,6 +1,6 @@
-# Container SSH Reverse Tunnel with Outside SSH Server
+# SSH Reverse Tunnel using docker with Outside SSH Server
 
-This script will help you to dig a hole in the inside network and create a tunneling server.
+This script will help you to dig a hole in the inside network using container with docker and create a tunneling server.
 
 > BTW, you will need a outside SSH server to handle this tunnel.
 
