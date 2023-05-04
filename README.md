@@ -85,7 +85,8 @@ docker exec -it reverse-inside-tunnel /bin/bash
 
   ```
   Host SELF
-      HostName localhost
+      HostName localhost <- Your outside server!
+      Port 22224 <- Your reversing port!
       User natlee
       Compression yes
   ```
