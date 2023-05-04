@@ -2,7 +2,7 @@
 version: "3.9"
 
 services:
-  openssh-server:
+  reverse-client:
     restart: unless-stopped
     image: lscr.io/linuxserver/openssh-server
     container_name: reverse-inside-tunnel
@@ -22,7 +22,7 @@ services:
       - USER_NAME=${USER_NAME} #optional
     volumes:
       - ./.env:/config/.env
-      - ./logs:/config/logs
+      - ./logs/client:/config/logs
       - ./src/root_ssh_key:/root/.ssh
       - ./src/user_ssh_key:/home/${USER_NAME}/.ssh
       - ./src/user_ssh_key:/config/.ssh

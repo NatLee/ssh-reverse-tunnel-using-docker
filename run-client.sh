@@ -1,22 +1,24 @@
 #!/bin/bash
 
-echo "---- Chang mode with SSH host keys"
+echo "#### RUNNING REVERSE CLIENT"
+
+echo "---- Change mode with SSH host keys"
 chmod 600 ./src/ssh_host_keys/ssh_*
 chmod 644 ./src/ssh_host_keys/ssh_*.pub
 
-echo "---- Chang mode with root SSH key"
+echo "---- Change mode with root SSH key"
 chmod 600 ./src/root_ssh_key/id_rsa
 chmod 644 ./src/root_ssh_key/id_rsa.pub
 
-echo "---- Chang mode with user SSH key"
+echo "---- Change mode with user SSH key"
 chmod 600 ./src/user_ssh_key/id_rsa
 chmod 644 ./src/user_ssh_key/id_rsa.pub
 
-echo "---- Chang owner with custom_scripts"
+echo "---- Change owner with custom_scripts"
 chown -R $USER:$USER ./src/custom_scripts/custom-cont-init.d
 chown -R $USER:$USER ./src/custom_scripts/custom-services.d
 
-echo "---- Chang mode with custom_scripts"
+echo "---- Change mode with custom_scripts"
 chmod 755 ./src/custom_scripts/custom-cont-init.d/*
 chmod 755 ./src/custom_scripts/custom-services.d/*
 
