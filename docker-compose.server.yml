@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  reverse-server:
+    restart: unless-stopped
+    image: lscr.io/linuxserver/openssh-server
+    container_name: reverse-outside-server
+    hostname: outside-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Taipei
+      - SUDO_ACCESS=true
+      - USER_NAME=${USER_NAME}
+    volumes:
+       - ./.env:/config/.env
+       - ./logs/server:/config/logs
+       - ./src/server-config/root_ssh_key:/root/.ssh
+       - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
+    ports:
+      # Here you can extend your own ports
+      - 22222:22222 # for SSH connections, REVERSE_SERVER_SSH_PORT
+      - 22224:22224 # custom reversing ports, REVERSE_TUNNEL_SSH_PORT

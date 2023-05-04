@@ -2,9 +2,27 @@
 
 This script will help you to dig a hole in the inside network using container with docker and create a tunneling server.
 
-> BTW, you will need a outside SSH server to handle this tunnel.
+## Usage (Server side)
 
-## Usage
+> Server config is in `./src/server/config`
+
+0. Check the `.env.example` file and save another one to `.env`.
+
+1. Generate pairs of key
+
+```bash
+bash ./keygen-server.sh
+```
+
+2. Run the reverse server
+
+```bash
+bash ./run-server.sh
+```
+
+> Default tunnel port is `22222` and reverse tunnel port is `22224` in `docker-compose.server.yml`.
+
+## Usage (Client side)
 
 0. Check the `.env.example` file and save another one to `.env`.
 
@@ -40,7 +58,7 @@ ssh-copy-id <YOUR_USERNAME_IN_OUTSIDE_SERVER>@<YOUR_OUSIDE_SERVER> -i ./src/root
 4. Start the OpenSSH server for tunneling inside
 
 ```bash
-bash ./run.sh
+bash ./run-client.sh
 ```
 
 ### Notice
