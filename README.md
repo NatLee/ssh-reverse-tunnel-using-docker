@@ -8,6 +8,8 @@ This script will help you to dig a hole in the inside network using container wi
 
 0. Check the `.env.example` file and save another one to `.env`.
 
+> Server side only use field of `USER_NAME` in `.env`.
+
 1. Generate pairs of key
 
 ```bash
