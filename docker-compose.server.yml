@@ -14,7 +14,7 @@ services:
     volumes:
        - ./.env:/config/.env
        - ./logs/server:/config/logs
-       - ./src/server-config/root_ssh_key:/root/.ssh
+       - ./src/server-config/root_ssh_key:/config/.ssh
        - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
     ports:
       # Here you can extend your own ports
