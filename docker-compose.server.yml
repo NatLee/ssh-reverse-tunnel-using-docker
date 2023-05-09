@@ -18,5 +18,5 @@ services:
        - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
     ports:
       # Here you can extend your own ports
-      - 22222:22222 # for SSH connections, REVERSE_SERVER_SSH_PORT
+      - 22222:2222 # for SSH connections, REVERSE_SERVER_SSH_PORT
       - 22224:22224 # custom reversing ports, REVERSE_TUNNEL_SSH_PORT
