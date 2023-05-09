@@ -41,7 +41,7 @@ bash ./keygen.sh
 2. Test connecting to the outside server specified in `.env` file
 
 ```bash
-bash ./connect.sh
+bash ./connect-outside-use-client-key.sh
 ```
 
 3. Run this command and copy the public key into outside server file `~/.ssh/authorized_keys`
@@ -87,7 +87,7 @@ docker exec -it reverse-inside-tunnel /bin/bash
 
   ```
   Host SELF
-      HostName localhost <- Your outside server!
+      HostName example.com <- Your outside server domain!
       Port 22224 <- Your reversing port!
       User natlee
       Compression yes
