@@ -1,5 +1,7 @@
 # SSH Reverse Tunnel using docker with Outside SSH Server
 
+> You can explore a more convenient option on [Telepy](https://github.com/NatLee/telepy).
+
 This script will help you to dig a hole in the inside network using container with docker and create a tunneling server.
 
 ## Usage (Server side)
