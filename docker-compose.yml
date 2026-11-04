@@ -17,13 +17,16 @@ services:
       - USER_PASSWORD=${USER_PASSWORD:?set USER_PASSWORD in .env, the sudo password inside the container}
       #- USER_PASSWORD_FILE=/path/to/file #optional
       - USER_NAME=${USER_NAME} #optional
+      # Read by src/custom_scripts/custom-services.d/autossh.sh.
+      - REVERSE_SERVER_HOST=${REVERSE_SERVER_HOST}
+      - REVERSE_SERVER_SSH_PORT=${REVERSE_SERVER_SSH_PORT}
+      - REVERSE_SERVER_USER_NAME=${REVERSE_SERVER_USER_NAME}
+      - REVERSE_TUNNEL_SSH_PORT=${REVERSE_TUNNEL_SSH_PORT}
     volumes:
-      - ./.env:/config/.env
       - ./logs/client:/config/logs
       - ./src/root_ssh_key:/root/.ssh
-      - ./src/user_ssh_key:/home/${USER_NAME}/.ssh
       - ./src/user_ssh_key:/config/.ssh
       - ./src/ssh_host_keys:/config/ssh_host_keys
       - ./src/sshd_config.d:/config/sshd/sshd_config.d:ro
-      - ./src/custom_scripts/custom-cont-init.d:/custom-cont-init.d
-      - ./src/custom_scripts/custom-services.d:/custom-services.d
+      - ./src/custom_scripts/custom-cont-init.d:/custom-cont-init.d:ro
+      - ./src/custom_scripts/custom-services.d:/custom-services.d:ro
