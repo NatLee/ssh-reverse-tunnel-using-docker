@@ -1,16 +1,6 @@
-#/bin/bash
-export $(cat ./.env)
-
-echo "---- Display public key used in AutoSSH"
-echo $(cat ./src/root_ssh_key/id_rsa.pub)
-echo ""
-
-echo "-------- Display .env"
-echo "Reverse server Host is $REVERSE_SERVER_HOST"
-echo "Reverse server user is $REVERSE_SERVER_USER_NAME"
-echo "Reverse server SSH port is $REVERSE_SERVER_SSH_PORT"
-echo "Command -> $REVERSE_SERVER_USER_NAME@$REVERSE_SERVER_HOST -p $REVERSE_SERVER_SSH_PORT"
-echo ""
-
-echo "---- Starting link outside tunnel server with SSH"
-ssh $REVERSE_SERVER_USER_NAME@$REVERSE_SERVER_HOST -p $REVERSE_SERVER_SSH_PORT -i ./src/root_ssh_key/id_rsa
+#!/usr/bin/env bash
+# Old entry point, kept so existing notes and habits still work. It only calls
+# ./tunnel.sh connect-outside (see "Coming from the old scripts" in the README) and can go
+# in a later release.
+echo "connect-outside-use-client-key.sh is now: ./tunnel.sh connect-outside" >&2
+exec "$(dirname "$0")/tunnel.sh" connect-outside "$@"

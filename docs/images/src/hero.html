@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+  README banner. Render the light and dark versions (#dark picks the dark theme) with a
+  Chromium-based browser, e.g.
+    msedge --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=960,400
+           --default-background-color=00000000 --virtual-time-budget=5000
+           --screenshot=hero-dark.png "file:///.../hero.html#dark"
+  then shrink the PNGs: magick hero-dark.png -strip -dither None -colors 256 PNG8:hero-dark.png
+  Everything on it comes from the repo: the commands of tunnel.sh, the container names and
+  hostnames in docker-compose*.yml, the default ports in .env.example (22222, 22224), sshd on
+  2222 inside the container, and the autossh "ssh -R *:22224:localhost:2222" in
+  src/custom_scripts/custom-services.d/autossh.sh.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SSH Reverse Tunnel using Docker banner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f6f8fa; --ink: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #ffffff;
+    --blue: #0969da; --green: #1a7f37; --purple: #8250df; --orange: #bc4c00; --red: #cf222e;
+    --shadow: 0 1px 2px rgba(31,35,40,.06), 0 6px 18px rgba(31,35,40,.06);
+    --tint1: rgba(130,80,223,.09); --tint2: rgba(9,105,218,.08); --wire: #8c959f; --pipe: rgba(26,127,55,.13);
+  }
+  .dark {
+    --bg: #0d1117; --bg2: #151b23; --ink: #f0f6fc; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --blue: #4493f8; --green: #3fb950; --purple: #ab7df8; --orange: #f0883e; --red: #f85149;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    --tint1: rgba(171,125,248,.13); --tint2: rgba(68,147,248,.11); --wire: #6e7681; --pipe: rgba(63,185,80,.16);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body { width: 960px; height: 400px; font-family: Inter, "Segoe UI", sans-serif; color: var(--ink); }
+  .frame { position: relative; width: 960px; height: 400px; border-radius: 22px; overflow: hidden;
+           border: 1px solid var(--line);
+           background: radial-gradient(520px 300px at 94% 6%, var(--tint1), transparent 70%),
+                       radial-gradient(420px 260px at 2% 100%, var(--tint2), transparent 70%), var(--bg); }
+  .dots { position: absolute; inset: 0; opacity: .5;
+          background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 22px 22px;
+          -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 60%, #000 100%); }
+
+  header { position: absolute; left: 44px; top: 30px; display: flex; align-items: flex-start; gap: 18px; }
+  .mark { width: 58px; height: 58px; border-radius: 16px; background: linear-gradient(140deg, #3d1f80, #8250df 50%, #1a7f37);
+          display: grid; place-items: center; box-shadow: var(--shadow); flex: none; }
+  h1 { margin: 2px 0 0; font-size: 39px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; white-space: nowrap; }
+  .tag { margin: 9px 0 0; font-size: 17px; color: var(--muted); letter-spacing: -0.005em; white-space: nowrap; }
+  .tag b { color: var(--ink); font-weight: 600; }
+  .cmds { display: flex; gap: 9px; margin-top: 13px; }
+  .cmd { font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5px; white-space: nowrap;
+         padding: 6px 11px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); }
+  .cmd span { color: var(--muted); margin-right: 7px; user-select: none; }
+
+  .node { position: absolute; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          box-shadow: var(--shadow); padding: 11px 14px; }
+  .label { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+           display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .label i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .mono { font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5px; margin-top: 6px; white-space: nowrap; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+  code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px; color: var(--ink); }
+  .port { display: flex; justify-content: space-between; gap: 10px; font-family: "JetBrains Mono", Consolas, monospace;
+          font-size: 12px; margin-top: 6px; white-space: nowrap; padding: 4px 8px; border-radius: 7px;
+          background: var(--bg2); border: 1px solid var(--line); }
+  .port span:last-child { color: var(--muted); font-family: Inter, "Segoe UI", sans-serif; }
+
+  #you { left: 34px; top: 214px; width: 196px; }
+  #you .label i { background: var(--blue); }
+  #outside { left: 300px; top: 186px; width: 238px; }
+  #outside .label i { background: var(--purple); }
+  #inside { left: 694px; top: 186px; width: 232px; }
+  #inside .label i { background: var(--green); }
+
+  .zone { position: absolute; top: 160px; bottom: 18px; border-radius: 16px; border: 1.5px dashed var(--line); }
+  #lan { left: 676px; width: 266px; }
+  .zone b { position: absolute; top: -9px; left: 14px; padding: 0 7px; background: var(--bg); font-size: 10.5px;
+            font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .wall { position: absolute; left: 652px; width: 9px; border-radius: 3px;
+          background: repeating-linear-gradient(180deg, var(--red) 0 12px, transparent 12px 18px); opacity: .55; }
+  .wall-label { position: absolute; left: 520px; top: 356px; width: 124px; text-align: right; font-size: 10.5px;
+                font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--red); opacity: .85; }
+
+  svg.wires { position: absolute; inset: 0; }
+  .wire { fill: none; stroke: var(--wire); stroke-width: 2; stroke-dasharray: 5 6; }
+  .head { fill: var(--wire); }
+  .pipe { fill: var(--pipe); stroke: var(--green); stroke-width: 1.5; }
+  .flow { fill: none; stroke: var(--green); stroke-width: 2.2; }
+  .flowhead { fill: var(--green); }
+  .tl { position: absolute; font-size: 11.5px; white-space: nowrap; color: var(--muted); }
+  .tl code { font-size: 11px; }
+  .tl.green { color: var(--green); font-weight: 600; }
+</style>
+</head>
+<body>
+<script>if (location.hash === '#dark') document.documentElement.className = 'dark';</script>
+<div class="frame">
+  <div class="dots"></div>
+
+  <header>
+    <div class="mark">
+      <!-- a tunnel through a wall -->
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 26V15a13 13 0 0 1 26 0v11"/>
+        <path d="M11 26v-9a6 6 0 0 1 12 0v9"/>
+        <path d="M2.5 26h29"/>
+      </svg>
+    </div>
+    <div>
+      <h1>SSH Reverse Tunnel using Docker</h1>
+      <p class="tag">Reach a machine <b>behind NAT</b> over SSH. One command sets up each end, one removes it.</p>
+      <div class="cmds">
+        <div class="cmd"><span>$</span>./tunnel.sh install server</div>
+        <div class="cmd"><span>$</span>./tunnel.sh install client</div>
+        <div class="cmd"><span>$</span>./tunnel.sh uninstall</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="zone" id="lan"><b>Inside network</b></div>
+  <div class="wall" style="top:172px; height:96px;"></div>
+  <div class="wall" style="top:310px; height:72px;"></div>
+  <div class="wall-label">NAT / firewall</div>
+
+  <svg class="wires" width="960" height="400">
+    <!-- you -> outside -->
+    <path class="wire" d="M233 262 H290"/>
+    <path class="head" d="M296 262 l-9 -5 v10 z"/>
+    <!-- the tunnel: a pipe from the outside server through the wall to the inside machine -->
+    <rect class="pipe" x="541" y="276" width="150" height="26" rx="13"/>
+    <path class="flow" d="M672 289 H566"/>
+    <path class="flowhead" d="M558 289 l10 -6 v12 z"/>
+  </svg>
+  <div class="tl" style="left:236px; top:240px;"><code>-p 22224</code></div>
+  <div class="tl green" style="left:550px; top:254px;">reverse tunnel</div>
+  <div class="tl" style="left:550px; top:308px;">inside dials out</div>
+
+  <div class="node" id="you">
+    <div class="label"><i></i>Your computer</div>
+    <div class="mono">ssh -p 22224 user@…</div>
+    <div class="sub">anywhere on the internet</div>
+  </div>
+
+  <div class="node" id="outside">
+    <div class="label"><i></i>Outside server</div>
+    <div class="mono">reverse-outside-server</div>
+    <div class="port"><span>:22222</span><span>SSH for the inside</span></div>
+    <div class="port"><span>:22224</span><span>tunnel, for you</span></div>
+  </div>
+
+  <div class="node" id="inside">
+    <div class="label"><i></i>Inside machine</div>
+    <div class="mono">reverse-inside-tunnel</div>
+    <div class="sub">autossh keeps the tunnel open:</div>
+    <div class="mono" style="font-size:11px; margin-top:3px;">ssh -R *:22224:localhost:2222</div>
+    <div class="port"><span>:2222</span><span>sshd, you land here</span></div>
+  </div>
+</div>
+</body>
+</html>

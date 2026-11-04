@@ -1,24 +1,28 @@
-
-.DS_Store
-
-desktop.ini
-
-logs
-
-.bash_history
-
-sshd.pid
-
-.config
+# Made by ./tunnel.sh and the containers. They hold keys, a password and logs:
+# never commit them.
 .env
+.env.*
+!.env.example
+logs/
 
+# Key folders: everything in them except the placeholder file.
+src/root_ssh_key/*
+src/user_ssh_key/*
+src/ssh_host_keys/*
+src/server-config/root_ssh_key/*
+src/server-config/ssh_host_keys/*
+!.gitkeep
+
+# Key files wherever they end up.
+id_rsa*
+id_ecdsa*
+id_ed25519*
+ssh_host_*_key*
+authorized_keys
 known_hosts*
 
-id_rsa*
-ssh_host_dsa_key*
-ssh_host_ecdsa*
-ssh_host_ed25519*
-ssh_host_rsa*
-
-authorized_keys
-
+.DS_Store
+desktop.ini
+.bash_history
+sshd.pid
+.config

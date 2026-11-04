@@ -1,31 +1,38 @@
-
-version: "3.9"
-
+# Inside machine: an SSH server you land in, plus autossh, which keeps the
+# reverse tunnel to the outside server open.
+#
+# Set it up with ./tunnel.sh install client. That writes .env, makes the keys
+# and starts this file. The variables below come from .env (see .env.example).
+name: ssh-reverse-tunnel-client
 services:
   reverse-client:
-    restart: unless-stopped
-    image: lscr.io/linuxserver/openssh-server
+    image: ${OPENSSH_IMAGE:?set it in .env or run ./tunnel.sh install client}
     container_name: reverse-inside-tunnel
-    hostname: inside-tunnel #optional
+    hostname: inside-tunnel
+    restart: unless-stopped
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Asia/Taipei
-      #- PUBLIC_KEY=yourpublickey #optional
-      #- PUBLIC_KEY_FILE=/path/to/file #optional
-      #- PUBLIC_KEY_DIR=/home/${USER_NAME}/.ssh #optional
-      #- PUBLIC_KEY_URL=https://github.com/${USER_NAME}.keys #optional
-      - SUDO_ACCESS=true #optional
-      #- PASSWORD_ACCESS=false #optional
-      - USER_PASSWORD=1234 #optional
-      #- USER_PASSWORD_FILE=/path/to/file #optional
-      - USER_NAME=${USER_NAME} #optional
+      # The container user gets your uid/gid, so the files it writes into the
+      # mounted folders stay yours.
+      - PUID=${PUID:?set it in .env or run ./tunnel.sh install client}
+      - PGID=${PGID:?set it in .env or run ./tunnel.sh install client}
+      - TZ=${TZ:?set it in .env or run ./tunnel.sh install client}
+      - USER_NAME=${USER_NAME:?set it in .env or run ./tunnel.sh install client}
+      # Key login only. sudo inside the container asks for USER_PASSWORD.
+      - PASSWORD_ACCESS=false
+      - SUDO_ACCESS=true
+      - USER_PASSWORD=${USER_PASSWORD:?set it in .env or run ./tunnel.sh install client}
+      # Read by src/custom_scripts/custom-services.d/autossh.sh.
+      - REVERSE_SERVER_HOST=${REVERSE_SERVER_HOST:?set it in .env or run ./tunnel.sh install client}
+      - REVERSE_SERVER_SSH_PORT=${REVERSE_SERVER_SSH_PORT:?set it in .env or run ./tunnel.sh install client}
+      - REVERSE_SERVER_USER_NAME=${REVERSE_SERVER_USER_NAME:?set it in .env or run ./tunnel.sh install client}
+      - REVERSE_TUNNEL_SSH_PORT=${REVERSE_TUNNEL_SSH_PORT:?set it in .env or run ./tunnel.sh install client}
     volumes:
-      - ./.env:/config/.env
       - ./logs/client:/config/logs
+      # Tunnel key (id_rsa) and the outside server's host key (known_hosts), used by autossh as root.
       - ./src/root_ssh_key:/root/.ssh
-      - ./src/user_ssh_key:/home/${USER_NAME}/.ssh
+      # Home of USER_NAME is /config: authorized_keys for logging in, and id_rsa to hop further.
       - ./src/user_ssh_key:/config/.ssh
       - ./src/ssh_host_keys:/config/ssh_host_keys
-      - ./src/custom_scripts/custom-cont-init.d:/custom-cont-init.d
-      - ./src/custom_scripts/custom-services.d:/custom-services.d
+      - ./src/sshd_config.d:/config/sshd/sshd_config.d:ro
+      - ./src/custom_scripts/custom-cont-init.d:/custom-cont-init.d:ro
+      - ./src/custom_scripts/custom-services.d:/custom-services.d:ro
