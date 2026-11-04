@@ -9,6 +9,7 @@
   <a href="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/actions/workflows/ci.yml"><img src="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Docker%20Compose-2.24%2B-2496ED?logo=docker&logoColor=white" alt="Docker Compose 2.24+">
   <img src="https://img.shields.io/badge/image-linuxserver%2Fopenssh--server-555" alt="Image: linuxserver/openssh-server">
+  <a href="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/NatLee/ssh-reverse-tunnel-using-docker" alt="License: MIT"></a>
 </p>
 
 > You can explore a more convenient option on [Telepy](https://github.com/NatLee/telepy).
@@ -32,7 +33,7 @@ One command sets up each end, and one removes it:
 - [What you need](#what-you-need)
 - [Install](#install) · [Without questions](#without-questions-automation) · [Uninstall](#uninstall)
 - [Commands](#commands) · [Settings](#settings-env) · [Coming from the old scripts](#coming-from-the-old-scripts)
-- [Security notes](#security-notes) · [Windows](#windows) · [Troubleshooting](#troubleshooting) · [Tests](#tests)
+- [Security notes](#security-notes) · [Windows](#windows) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [License](#license)
 
 ## How it works
 
@@ -429,3 +430,7 @@ gets its limits. It recreates and restarts the containers, runs both installs
 again on a terminal, then uninstalls both ends and checks that no container,
 network, image or file is left. CI runs it, plus ShellCheck, on every pull
 request and on main.
+
+## License
+
+[MIT](LICENSE) © 2023 Nat Lee
