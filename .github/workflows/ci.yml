@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint every shell script
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 shellcheck
+
+  e2e:
+    name: Install, tunnel, uninstall
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Docker versions
+        run: |
+          docker version --format 'Docker {{.Server.Version}}'
+          docker compose version
+      # Two machines with their own Docker (outside server, inside machine), a
+      # NAT router and a laptop: install both ends, ssh in through the tunnel,
+      # recreate the server, uninstall both ends and check nothing is left.
+      - name: End-to-end test
+        run: tests/e2e.sh
