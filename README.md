@@ -9,6 +9,7 @@
   <a href="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/actions/workflows/ci.yml"><img src="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Docker%20Compose-2.24%2B-2496ED?logo=docker&logoColor=white" alt="Docker Compose 2.24+">
   <img src="https://img.shields.io/badge/image-linuxserver%2Fopenssh--server-555" alt="Image: linuxserver/openssh-server">
+  <a href="https://github.com/NatLee/ssh-reverse-tunnel-using-docker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/NatLee/ssh-reverse-tunnel-using-docker" alt="License: MIT"></a>
 </p>
 
 > You can explore a more convenient option on [Telepy](https://github.com/NatLee/telepy).
@@ -32,7 +33,7 @@ One command sets up each end, and one removes it:
 - [What you need](#what-you-need)
 - [Install](#install) · [Without questions](#without-questions-automation) · [Uninstall](#uninstall)
 - [Commands](#commands) · [Settings](#settings-env) · [Coming from the old scripts](#coming-from-the-old-scripts)
-- [Security notes](#security-notes) · [Windows](#windows) · [Troubleshooting](#troubleshooting) · [Tests](#tests)
+- [Security notes](#security-notes) · [Windows](#windows) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [License](#license)
 
 ## How it works
 
@@ -103,7 +104,7 @@ sequenceDiagram
     I-->>You: tunnel key + the authorize command
     You->>S: ./tunnel.sh authorize 'ssh-rsa AAAA... reverse-tunnel@inside'
     You->>I: press Enter
-    I->>S: test login with the tunnel key (you confirm the host key)
+    I->>S: check that the tunnel key is accepted (no shell, you confirm the host key)
     Note over I: starts reverse-inside-tunnel (autossh)
     I->>S: logs in to itself through port 22224
     I-->>You: ssh command, ~/.ssh/config entry, known_hosts lines
@@ -142,17 +143,30 @@ outside server:
 ./tunnel.sh authorize 'ssh-rsa AAAA... reverse-tunnel@inside'
 ```
 
-Run that on the outside server, then press Enter on the inside machine. The
-installer logs in to the outside server once to check the key; the first time,
-ssh shows the server's host key, so compare it with the fingerprints from
-step 1 and type `yes`. Then it starts `reverse-inside-tunnel`, logs in to
-itself through port 22224 to prove the tunnel works, and prints what you need
-on your computer.
+Run that on the outside server, then press Enter on the inside machine.
+`authorize` lets the key open port 22224 and nothing else: no shell, no other
+port (see [Security notes](#security-notes)). The installer then checks that
+the outside server accepts the key. The key has no shell there, so this check
+runs nothing on the server. The first time, ssh shows the server's host key, so
+compare it with the fingerprints from step 1 and type `yes`. Then it starts
+`reverse-inside-tunnel`, logs in to itself through port 22224 to prove the
+tunnel works, and prints what you need on your computer.
 
-If your outside server is a plain SSH server instead of this repo, add the key
-to `~/.ssh/authorized_keys` there, or pick "copy it now with ssh-copy-id". Its
-sshd needs `AllowTcpForwarding yes` and `GatewayPorts clientspecified` (or
-`yes`), otherwise the tunnel port only listens on the server's localhost.
+#### A plain SSH server
+
+If your outside server is a plain SSH server instead of this repo, install
+prints the line to add to `~/.ssh/authorized_keys` there. The options in front
+of the key limit it to the tunnel, the same way `authorize` does:
+
+```text
+restrict,port-forwarding,permitlisten="*:22224",command="echo 'This key only opens a reverse tunnel. There is no shell on this server.' >&2; exit 1" ssh-rsa AAAA... reverse-tunnel@inside
+```
+
+"copy it now with ssh-copy-id" in the install menu adds the same line for you,
+if you can log in there with a password or another key. That server's sshd
+needs `GatewayPorts clientspecified` (or `yes`), otherwise the tunnel port
+only listens on its localhost, and `AllowTcpForwarding` set to `remote` or
+`yes`.
 
 ### 3. On your computer
 
@@ -267,9 +281,9 @@ in `.env`.
 | `./tunnel.sh logs [role] [-f ...]` | `docker compose logs` for this end. |
 | `./tunnel.sh keygen [role]` | Make new keys. Asks first if keys exist (`--yes` skips). |
 | `./tunnel.sh pubkey` | Print the tunnel public key of this inside machine. |
-| `./tunnel.sh authorize KEY\|FILE\|-` | Outside server: accept an inside machine's tunnel key. |
-| `./tunnel.sh copy-key` | Put the tunnel key on the outside server with ssh-copy-id. |
-| `./tunnel.sh connect-outside [command]` | SSH to the outside server with the tunnel key. |
+| `./tunnel.sh authorize [--tunnel-port P] KEY\|FILE\|-` | Outside server: accept an inside machine's tunnel key, for its tunnel port only (default from `.env`). |
+| `./tunnel.sh copy-key` | Put the tunnel key on a [plain SSH server](#a-plain-ssh-server) with ssh-copy-id. |
+| `./tunnel.sh connect-outside` | Check that the outside server accepts the tunnel key. |
 | `./tunnel.sh shell` | Open a shell in the inside container. |
 
 ## Settings (.env)
@@ -291,7 +305,12 @@ default.
 | `OPENSSH_IMAGE` | both | the image, e.g. pin a version tag here |
 
 To run several tunnels through one outside server, give each inside machine its
-own tunnel port and add a `ports:` line for it in `docker-compose.server.yml`.
+own tunnel port, add a `ports:` line for it in `docker-compose.server.yml`, and
+accept its key for that port:
+
+```bash
+./tunnel.sh authorize --tunnel-port 23000 'ssh-rsa AAAA... reverse-tunnel@second-machine'
+```
 
 ## Coming from the old scripts
 
@@ -315,6 +334,20 @@ Your keys stay where they were, so the outside server keeps accepting them.
 `OPENSSH_IMAGE`). A container started by the old scripts is replaced the first
 time you start the new one.
 
+On the outside server, two things changed in November 2026:
+
+- Tunnel keys only open their tunnel now. Keys accepted by an older version sit
+  in `src/server-config/root_ssh_key/authorized_keys` without limits. The next
+  `./tunnel.sh start server`, `install server` or `authorize` (and so also
+  `bash ./run-server.sh`) adds the limits for `REVERSE_TUNNEL_SSH_PORT` and
+  lists each key it changed. Run one of them once after updating. Running
+  tunnels keep working. If another inside machine uses a different port, accept
+  its key again with `authorize --tunnel-port`.
+- Nobody gets a shell or `sudo` on the outside server any more, so
+  `./tunnel.sh connect-outside` (the old `connect-outside-use-client-key.sh`)
+  only checks that the key is accepted. To look inside the server container,
+  use `docker exec -it reverse-outside-server bash` on the server itself.
+
 ## Security notes
 
 - Login is by key only. Password login and root login are off on both ends;
@@ -326,11 +359,20 @@ time you start the new one.
   setup accepted any host key.
 - Port 22224 on the outside server is open to the internet and leads to the
   inside container's sshd. Anyone can knock, but only your login keys get in.
+- On the outside server, a tunnel key can open its own tunnel port and nothing
+  else. If an inside machine and its key get stolen, the thief still gets no
+  shell, no `sudo`, no other port and no hop to other hosts from there.
+  - `authorize` writes each key with `restrict,port-forwarding,permitlisten="*:<port>"`
+    and a command that only prints a refusal.
+  - The server's sshd backs this up for every key, also one added by hand:
+    `ForceCommand` (no shell, no command), `AllowTcpForwarding remote` (only
+    `ssh -R`), no agent, X11 or terminal. See
+    `src/server-config/sshd_config.d/tunnel.conf`.
+  - The server container gives its user no `sudo` (`SUDO_ACCESS=false`).
 - The outside server uses `GatewayPorts clientspecified`, so a tunnel only
   listens where the client asks for it.
-- As before, both containers give their user `sudo`. On the inside it asks for
-  `USER_PASSWORD` (random, in `.env`). On the outside server it does not ask:
-  the tunnel user can become root inside that container.
+- Inside, the container user has `sudo`, and it asks for `USER_PASSWORD`
+  (random, in `.env`).
 
 ## Windows
 
@@ -353,7 +395,7 @@ other user from the file's security settings.
 ## Troubleshooting
 
 - **The tunnel check failed.** Is the tunnel key accepted on the outside
-  server (`./tunnel.sh connect-outside true` tells you)? Is port 22224 open in
+  server (`./tunnel.sh connect-outside` tells you)? Is port 22224 open in
   its firewall? `./tunnel.sh logs -f` shows what autossh says. autossh keeps
   trying, so the tunnel comes up as soon as the problem is fixed.
 - **"REMOTE HOST IDENTIFICATION HAS CHANGED" in the logs** after you rebuilt
@@ -368,6 +410,9 @@ other user from the file's security settings.
   belongs to you.
 - **sudo inside the inside container asks for a password.** It is
   `USER_PASSWORD` in `.env`.
+- **"This server only opens reverse tunnels" when you ssh to the outside
+  server.** That is the tunnel key doing its job. Manage the outside server
+  from its own console, or with `docker exec` there.
 
 ## Tests
 
@@ -378,7 +423,14 @@ tests/e2e.sh
 builds two "machines" with their own Docker (outside server and inside
 machine), a NAT router, a laptop and another inside host, all on separate
 Docker networks with the addresses used in this README. It installs both ends,
-logs in from the laptop through the tunnel, reaches the other inside host,
-recreates and restarts the containers, runs both installs again on a terminal,
-then uninstalls both ends and checks that no container, network, image or
-file is left. CI runs it, plus ShellCheck, on every pull request and on main.
+logs in from the laptop through the tunnel, and reaches the other inside host.
+It checks that the tunnel key gets no shell, no `sudo`, no other port and no
+`ssh -W` hop on the outside server, and that a key added by an older version
+gets its limits. It recreates and restarts the containers, runs both installs
+again on a terminal, then uninstalls both ends and checks that no container,
+network, image or file is left. CI runs it, plus ShellCheck, on every pull
+request and on main.
+
+## License
+
+[MIT](LICENSE) © 2023 Nat Lee

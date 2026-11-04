@@ -31,7 +31,6 @@ TUNNEL_PORT=$(sed -n 's/^REVERSE_TUNNEL_SSH_PORT=//p' "$ROOT/.env.example")
 CLIENT_CONTAINER=$(sed -n 's/^ *container_name: *//p' "$ROOT/docker-compose.yml")
 SERVER_CONTAINER=$(sed -n 's/^ *container_name: *//p' "$ROOT/docker-compose.server.yml")
 CLIENT_HOSTNAME=$(sed -n 's/^ *hostname: *//p' "$ROOT/docker-compose.yml")
-SERVER_HOSTNAME=$(sed -n 's/^ *hostname: *//p' "$ROOT/docker-compose.server.yml")
 SERVER_PROJECT=$(sed -n 's/^name: *//p' "$ROOT/docker-compose.server.yml")
 WAN_SUBNET=203.0.113.0/24 OUTSIDE_IP=203.0.113.10 ROUTER_WAN_IP=203.0.113.2 LAPTOP_IP=203.0.113.50
 LAN_SUBNET=192.168.50.0/24 INSIDE_IP=192.168.50.10 NAS_IP=192.168.50.20 ROUTER_LAN_IP=192.168.50.254
@@ -39,6 +38,7 @@ TESTER=tester
 REPO=/home/$TESTER/ssh-reverse-tunnel-using-docker
 DEFAULT_USER=$(sed -n 's/^USER_NAME=//p' "$ROOT/.env.example")
 OTHER_USER=alice # answered on a terminal, to test changing a setting
+OTHER_PORT=23000 # a port the tunnel key must not be able to open
 WAIT=180          # seconds, for anything that has to come up
 WORK=$(mktemp -d) # logs and fingerprints of this run
 
@@ -161,6 +161,11 @@ GOT=$(on outside grep -E '^(TUNNEL_ROLE|USER_NAME|REVERSE_SERVER_SSH_PORT|REVERS
 [ "$GOT" = "REVERSE_SERVER_SSH_PORT=$SSH_PORT REVERSE_TUNNEL_SSH_PORT=$TUNNEL_PORT TUNNEL_ROLE=server USER_NAME=$DEFAULT_USER " ] ||
     fail "the server's .env is not the defaults: $GOT"
 pass "server installed without questions, with the defaults and the tunnel key"
+# key_limits MACHINE: the options in front of each key on the outside server, up to the forced command.
+key_limits() { on "$1" sed 's/,command=.*//' src/server-config/root_ssh_key/authorized_keys; }
+[ "$(key_limits outside)" = "restrict,port-forwarding,permitlisten=\"*:$TUNNEL_PORT\"" ] ||
+    fail "the tunnel key is not limited to port $TUNNEL_PORT: $(key_limits outside)"
+pass "the server keeps the tunnel key as: restrict,port-forwarding,permitlisten=\"*:$TUNNEL_PORT\",command=..."
 # A container left by the old scripts: same fixed name, but a compose project
 # named after the folder. install must clear it out of the way.
 as_root inside docker run -d --name "$CLIENT_CONTAINER" --label com.docker.compose.project=old-checkout \
@@ -171,9 +176,9 @@ has "$WORK/install-client.log" "the tunnel works" || fail "client's own tunnel c
 has "$WORK/install-client.log" "left over from before tunnel.sh (project old-checkout)" ||
     fail "the container left by the old scripts was not cleared"
 pass "client installed (old container cleared), its own check went through the tunnel"
-GOT=$(on inside bash ./connect-outside-use-client-key.sh hostname 2>/dev/null | tail -n 1)
-[ "$GOT" = "$SERVER_HOSTNAME" ] || fail "connect-outside-use-client-key.sh landed on '$GOT'"
-pass "the old connect-outside-use-client-key.sh still logs in to the outside server"
+on inside bash ./connect-outside-use-client-key.sh >"$WORK/connect-outside.log" 2>&1 || fail "connect-outside-use-client-key.sh"
+has "$WORK/connect-outside.log" "accepts the tunnel key, for the tunnel only (no shell)" || fail "connect-outside did not confirm the key"
+pass "the old connect-outside-use-client-key.sh checks the key: accepted, no shell"
 
 step "laptop: set up as the install output says (key, ~/.ssh/config, known_hosts)"
 on inside cat src/user_ssh_key/id_rsa | into laptop sh -c 'umask 077; mkdir -p ~/.ssh; cat >~/.ssh/inside-tunnel_id_rsa'
@@ -200,6 +205,35 @@ GOT=$(on inside ssh -i "/home/$TESTER/.ssh/id_ed25519" -o BatchMode=yes -o Stric
 [ "$GOT" = "$CLIENT_HOSTNAME" ] || fail "own key landed on '$GOT'"
 pass "the inside user's own ~/.ssh/id_ed25519 may log in too"
 
+step "the tunnel key only opens the tunnel: no shell, no sudo, no other port, no jump"
+# tunnel_ssh ARGS: ssh from the inside machine to the outside server with the tunnel key.
+tunnel_ssh() {
+    on inside ssh -i src/root_ssh_key/id_rsa -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 \
+        -o UserKnownHostsFile=src/root_ssh_key/known_hosts -p "$SSH_PORT" "$@"
+}
+if GOT=$(tunnel_ssh "$DEFAULT_USER@$OUTSIDE_IP" 'echo GOT A SHELL' 2>&1); then fail "the command ran: $GOT"; fi
+case $GOT in *"GOT A SHELL"*) fail "the tunnel key got a shell" ;; *"only opens"*) ;; *) fail "unexpected answer: $GOT" ;; esac
+if GOT=$(tunnel_ssh -tt "$DEFAULT_USER@$OUTSIDE_IP" 2>&1 </dev/null); then fail "an interactive login worked: $GOT"; fi
+# No terminal (PermitTTY no), and the forced command instead of a login shell.
+case $GOT in *"$DEFAULT_USER@$SERVER_CONTAINER"* | *"$DEFAULT_USER@"*":"*'$'*) fail "got a shell prompt: $GOT" ;; esac
+case $GOT in *"only opens"* | *"PTY allocation request failed"*) ;; *) fail "interactive login: unexpected answer: $GOT" ;; esac
+pass "a command or an interactive login gets the refusal message, not a shell"
+if GOT=$(tunnel_ssh "$DEFAULT_USER@$OUTSIDE_IP" 'sudo -n id' 2>&1); then fail "sudo over ssh ran: $GOT"; fi
+case $GOT in *"uid=0"*) fail "sudo over ssh gave root" ;; esac
+if GOT=$(as_root outside docker exec -u "$DEFAULT_USER" "$SERVER_CONTAINER" sudo -n id 2>&1); then fail "sudo in the server container: $GOT"; fi
+pass "no sudo: not over ssh, and not for $DEFAULT_USER inside $SERVER_CONTAINER either (sudo said: ${GOT%%$'\n'*})"
+if tunnel_ssh -f -N -o ExitOnForwardFailure=yes -R "*:$OTHER_PORT:localhost:2222" "$DEFAULT_USER@$OUTSIDE_IP" 2>"$WORK/other-port.log"; then
+    on inside pkill -f "$OTHER_PORT:localhost" || true
+    fail "the tunnel key opened port $OTHER_PORT"
+fi
+if as_root outside docker exec "$SERVER_CONTAINER" nc -z localhost "$OTHER_PORT" 2>/dev/null; then fail "port $OTHER_PORT is open"; fi
+pass "ssh -R $OTHER_PORT is refused ($(tr -d '\r' <"$WORK/other-port.log" | tail -n 1))"
+if GOT=$(tunnel_ssh -W localhost:2222 "$DEFAULT_USER@$OUTSIDE_IP" 2>&1 </dev/null); then fail "ssh -W worked: $GOT"; fi
+case $GOT in *SSH-2.0*) fail "ssh -W reached an ssh server: $GOT" ;; esac
+pass "ssh -W (jump through the server) is refused"
+eventually 30 login_from_laptop || fail "the real tunnel stopped working"
+pass "the real tunnel on port $TUNNEL_PORT still works"
+
 # sshd_value MACHINE CONTAINER KEY: what sshd really uses for KEY.
 sshd_value() {
     as_root "$1" docker exec "$2" sh -c '/usr/sbin/sshd.pam -T -f /config/sshd/sshd_config -h /config/ssh_host_keys/ssh_host_ed25519_key' |
@@ -216,7 +250,10 @@ check_sshd() { # check_sshd MACHINE CONTAINER key=value...
 }
 step "sshd settings in force"
 check_sshd outside "$SERVER_CONTAINER" permitrootlogin=no passwordauthentication=no kbdinteractiveauthentication=no \
-    allowtcpforwarding=yes gatewayports=clientspecified clientaliveinterval=15
+    allowtcpforwarding=remote gatewayports=clientspecified allowagentforwarding=no x11forwarding=no permittty=no \
+    clientaliveinterval=15
+[ -n "$(sshd_value outside "$SERVER_CONTAINER" forcecommand)" ] || fail "$SERVER_CONTAINER has no ForceCommand"
+pass "$SERVER_CONTAINER: forcecommand is set"
 check_sshd inside "$CLIENT_CONTAINER" permitrootlogin=no passwordauthentication=no kbdinteractiveauthentication=no \
     allowtcpforwarding=yes gatewayports=no
 
@@ -224,7 +261,7 @@ step "outside: recreate the server container; settings and tunnel must come back
 on outside docker compose -p "$SERVER_PROJECT" down >/dev/null 2>&1
 on outside ./tunnel.sh start >/dev/null 2>&1
 eventually "$WAIT" login_from_laptop || fail "the tunnel did not come back after the server was recreated"
-check_sshd outside "$SERVER_CONTAINER" allowtcpforwarding=yes gatewayports=clientspecified
+check_sshd outside "$SERVER_CONTAINER" allowtcpforwarding=remote gatewayports=clientspecified
 on outside test -f src/server-config/sshd_config.d/tunnel.conf || fail "the server's sshd settings file disappeared"
 pass "recreated server: same settings, tunnel back, repo files untouched"
 
@@ -245,13 +282,27 @@ on_tty inside "hostname\nexit\n" ./tunnel.sh shell >"$WORK/shell.txt" || fail "s
 has "$WORK/shell.txt" "$CLIENT_HOSTNAME" || fail "shell did not open in $CLIENT_CONTAINER"
 pass "stop takes the tunnel down, start brings it back; logs, status and shell work"
 
-step "outside: install server again on a terminal (Enter for every default), authorize the same key again"
+step "outside: a key added by the old authorize gets limited when install runs again (on a terminal, Enter for every default)"
+# The old authorize wrote the bare key line, without limits.
+on outside sh -c 'cat ~/tunnel.pub > src/server-config/root_ssh_key/authorized_keys'
+[ "$(on outside cut -d' ' -f1 src/server-config/root_ssh_key/authorized_keys)" = ssh-rsa ] || fail "could not put the old-style key line in place"
 on_tty outside "\n\n\n\n" ./tunnel.sh install server >"$WORK/install-server-again.log" || fail "second install server"
 has "$WORK/install-server-again.log" "kept src/server-config/ssh_host_keys/ssh_host_ed25519_key" || fail "a second install replaced the host keys"
+has "$WORK/install-server-again.log" "limited to the tunnel on port $TUNNEL_PORT" || fail "install did not say it limited the old key"
+[ "$(key_limits outside)" = "restrict,port-forwarding,permitlisten=\"*:$TUNNEL_PORT\"" ] || fail "the old key was not limited: $(key_limits outside)"
+eventually 30 login_from_laptop || fail "the tunnel stopped working after the upgrade"
+pass "the old bare key line is now limited to port $TUNNEL_PORT, and the tunnel still works"
 on outside ./tunnel.sh authorize "$TUNNEL_PUB" >"$WORK/authorize.log"
 has "$WORK/authorize.log" "already accepted" || fail "authorize added the same key twice"
 [ "$(on outside grep -c . src/server-config/root_ssh_key/authorized_keys)" = 1 ] || fail "the key is listed more than once"
 pass "a second install keeps the host keys; authorize keeps one copy of the key"
+on outside sh -c 'ssh-keygen -q -t ed25519 -N "" -C second-inside -f /tmp/second' >/dev/null
+on outside ./tunnel.sh authorize --tunnel-port "$OTHER_PORT" /tmp/second.pub >"$WORK/authorize-port.log"
+on outside grep -F 'second-inside' src/server-config/root_ssh_key/authorized_keys | grep -qF "permitlisten=\"*:$OTHER_PORT\"" ||
+    fail "authorize --tunnel-port did not limit the second key to $OTHER_PORT"
+on outside grep -F 'reverse-tunnel@inside' src/server-config/root_ssh_key/authorized_keys | grep -qF "permitlisten=\"*:$TUNNEL_PORT\"" ||
+    fail "the first key lost its own port"
+pass "authorize --tunnel-port $OTHER_PORT limits a second key to its own port; the first key keeps $TUNNEL_PORT"
 
 step "inside: install client again on a terminal, as the first time (confirm the host key), now as $OTHER_USER"
 on inside rm src/root_ssh_key/known_hosts
