@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   reverse-server:
     restart: unless-stopped
@@ -16,6 +15,7 @@ services:
        - ./logs/server:/config/logs
        - ./src/server-config/root_ssh_key:/config/.ssh
        - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
+       - ./src/server-config/sshd_config.d:/config/sshd/sshd_config.d:ro
     ports:
       # Here you can extend your own ports
       - ${REVERSE_SERVER_SSH_PORT}:2222 # for SSH connections, REVERSE_SERVER_SSH_PORT
