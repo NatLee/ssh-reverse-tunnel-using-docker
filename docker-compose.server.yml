@@ -8,6 +8,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Asia/Taipei
+      - PASSWORD_ACCESS=false
       - SUDO_ACCESS=true
       - USER_NAME=${USER_NAME}
     volumes:

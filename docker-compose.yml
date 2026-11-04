@@ -13,8 +13,8 @@ services:
       #- PUBLIC_KEY_DIR=/home/${USER_NAME}/.ssh #optional
       #- PUBLIC_KEY_URL=https://github.com/${USER_NAME}.keys #optional
       - SUDO_ACCESS=true #optional
-      #- PASSWORD_ACCESS=false #optional
-      - USER_PASSWORD=1234 #optional
+      - PASSWORD_ACCESS=false
+      - USER_PASSWORD=${USER_PASSWORD:?set USER_PASSWORD in .env, the sudo password inside the container}
       #- USER_PASSWORD_FILE=/path/to/file #optional
       - USER_NAME=${USER_NAME} #optional
     volumes:
