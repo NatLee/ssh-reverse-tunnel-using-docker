@@ -39,10 +39,10 @@ One command sets up each end, and one removes it:
 ```mermaid
 flowchart LR
     you["Your computer"]
-    subgraph outsidenet ["Outside server: public address, e.g. 203.0.113.10"]
+    subgraph outsidenet["Outside server: public address, e.g. 203.0.113.10"]
         server["reverse-outside-server<br/>:22222 SSH for the inside machine<br/>:22224 tunnel port"]
     end
-    subgraph insidenet ["Inside network, behind NAT"]
+    subgraph insidenet["Inside network, behind NAT"]
         client["reverse-inside-tunnel<br/>sshd :2222 + autossh"]
         other["other machines<br/>e.g. 192.168.50.20"]
     end
