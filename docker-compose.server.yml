@@ -19,8 +19,10 @@ services:
       # The inside machines log in as this user, with the keys in
       # src/server-config/root_ssh_key/authorized_keys (./tunnel.sh authorize).
       - USER_NAME=${USER_NAME:?set it in .env or run ./tunnel.sh install server}
+      # Key login only, and that user gets no sudo: the tunnel keys have no
+      # shell here anyway (see src/server-config/sshd_config.d/tunnel.conf).
       - PASSWORD_ACCESS=false
-      - SUDO_ACCESS=true
+      - SUDO_ACCESS=false
     volumes:
       - ./logs/server:/config/logs
       - ./src/server-config/root_ssh_key:/config/.ssh

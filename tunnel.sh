@@ -109,9 +109,10 @@ Day to day (ROLE defaults to the one install saved in .env)
   logs [ROLE] [ARGS]    docker compose logs, e.g. ./tunnel.sh logs -f
   keygen [ROLE]         Make new keys (asks first when keys exist; --yes skips).
   pubkey                Print the tunnel public key of this inside machine.
-  authorize KEY|FILE|-  On the outside server: accept an inside machine's key.
-  copy-key              Put the tunnel key on the outside server with ssh-copy-id.
-  connect-outside [CMD] SSH to the outside server with the tunnel key.
+  authorize KEY|FILE|-  On the outside server: accept an inside machine's key, for
+                        its tunnel port only (--tunnel-port PORT, default from .env).
+  copy-key              Put the tunnel key on a plain SSH server with ssh-copy-id.
+  connect-outside       Check that the outside server accepts the tunnel key.
   shell                 Open a shell in the inside container.
 
 Options for install (or set the same name in the environment or .env)
@@ -501,16 +502,53 @@ keep_key() {
     fi
 }
 
-# key_id LINE: the key type and data of a public key line (options and comment dropped).
-key_id() { awk '{ for (i = 1; i < NF; i++) if ($i ~ /^(ssh-|ecdsa-|sk-)/) { print $i, $(i + 1); exit } }' <<<"$1"; }
+# A public key line is "[options] type data [comment]". The awk snippets below
+# find the key by its type (ssh-..., ecdsa-..., sk-...) and work from there.
+# shellcheck disable=SC2016 # awk code, expanded by awk
+KEY_TYPE_AWK='function key_at() { for (i = 1; i < NF; i++) if ($i ~ /^(ssh-|ecdsa-|sk-)/) return i; return 0 }'
 
-# add_keys FILE KEY_OR_FILE...: add the public keys that FILE does not list yet ("-" reads stdin).
+# key_id LINE: the key type and data of a public key line (options and comment dropped).
+key_id() { awk "$KEY_TYPE_AWK"' { i = key_at(); if (i) print $i, $(i + 1) }' <<<"$1"; }
+
+# key_part LINE: the line without its options: "type data [comment]".
+key_part() { awk "$KEY_TYPE_AWK"' { i = key_at(); if (i) print substr($0, index($0, $i " " $(i + 1))) }' <<<"$1"; }
+
+# key_line FILE ID: the line of FILE that holds the key ID (see key_id).
+key_line() { ID=$2 awk "$KEY_TYPE_AWK"' { i = key_at(); if (i && $i " " $(i + 1) == ENVIRON["ID"]) { print; exit } }' "$1"; }
+
+# set_key_line FILE ID LINE: replace the line that holds the key ID with LINE.
+set_key_line() {
+    local tmp
+    tmp=$(mktemp "$1.XXXXXX")
+    ID=$2 NEW=$3 awk "$KEY_TYPE_AWK"'
+        { i = key_at() }
+        i && $i " " $(i + 1) == ENVIRON["ID"] { if (!done) print ENVIRON["NEW"]; done = 1; next }
+        { print }' "$1" >"$tmp"
+    chmod 600 "$tmp"
+    mv "$tmp" "$1"
+}
+
+# fingerprint LINE: what ssh-keygen -l says about a public key line; fails if it is none.
+fingerprint() {
+    local file
+    file=$(mktemp)
+    printf '%s\n' "$1" >"$file"
+    if ssh-keygen -l -f "$file" 2>/dev/null; then
+        rm -f "$file"
+    else
+        rm -f "$file"
+        return 1
+    fi
+}
+
+# add_keys FILE OPTIONS KEY_OR_FILE...: make FILE accept these public keys,
+# each with OPTIONS in front (may be empty). A key that is there already gets
+# its line updated when the options differ. "-" reads the keys from stdin.
 add_keys() {
-    local file=$1 source text line id fingerprint check
-    shift
+    local file=$1 options=$2 source text line id print wanted existing
+    shift 2
     touch "$file"
     chmod 600 "$file"
-    check=$(mktemp)
     for source in "$@"; do
         if [ "$source" = - ]; then
             text=$(cat)
@@ -521,21 +559,48 @@ add_keys() {
         fi
         while IFS= read -r line; do
             case $line in '' | '#'*) continue ;; esac
-            printf '%s\n' "$line" >"$check"
-            if ! fingerprint=$(ssh-keygen -l -f "$check" 2>/dev/null); then
-                rm -f "$check"
-                die "not an SSH public key: ${line:0:50}..."
-            fi
+            print=$(fingerprint "$line") || die "not an SSH public key: ${line:0:50}..."
             id=$(key_id "$line")
-            if awk -v id="$id" '{ for (i = 1; i < NF; i++) if ($i " " $(i + 1) == id) found = 1 } END { exit !found }' "$file"; then
-                info "already accepted: $fingerprint"
+            wanted="${options:+$options }$(key_part "$line")"
+            existing=$(key_line "$file" "$id")
+            if [ -z "$existing" ]; then
+                printf '%s\n' "$wanted" >>"$file"
+                ok "accepted $print"
+            elif [ "$existing" = "$wanted" ]; then
+                info "already accepted: $print"
             else
-                printf '%s\n' "$line" >>"$file"
-                ok "accepted $fingerprint"
+                set_key_line "$file" "$id" "$wanted"
+                ok "updated $print"
             fi
         done <<<"$text"
     done
-    rm -f "$check"
+}
+
+# What a tunnel key may do on the outside server: open its reverse tunnel port
+# (ssh -R) and nothing else. restrict turns off everything (forwarding, agent,
+# X11, terminal), port-forwarding turns forwarding back on, permitlisten allows
+# only the tunnel port, and command answers any request for a shell or command.
+# The outside server's sshd settings say the same for every key (see
+# src/server-config/sshd_config.d/tunnel.conf), in case a key is added by hand.
+NO_SHELL_MESSAGE="This key only opens a reverse tunnel. There is no shell on this server."
+
+# tunnel_key_options PORT: the authorized_keys options for a tunnel key.
+tunnel_key_options() { printf 'restrict,port-forwarding,permitlisten="*:%s",command="echo '\''%s'\'' >&2; exit 1"' "$1" "$NO_SHELL_MESSAGE"; }
+
+# restrict_server_keys: give every key on the outside server the tunnel-only
+# options. Keys added before 2026-11 (or by hand) have none and get them for
+# REVERSE_TUNNEL_SSH_PORT. Lines that start with "restrict," already have
+# their limits and stay as they are, so a key keeps its own tunnel port.
+restrict_server_keys() {
+    local file=$SERVER_AUTHORIZED_KEYS port line
+    if [ ! -s "$file" ]; then return 0; fi
+    port=$(value_for REVERSE_TUNNEL_SSH_PORT)
+    while IFS= read -r line; do
+        case $line in '' | '#'* | restrict,*) continue ;; esac
+        if [ -z "$(key_id "$line")" ]; then continue; fi
+        set_key_line "$file" "$(key_id "$line")" "$(tunnel_key_options "$port") $(key_part "$line")"
+        ok "limited to the tunnel on port $port: $(fingerprint "$line" || echo "${line:0:40}...")"
+    done <<<"$(cat "$file")"
 }
 
 # make_keys ROLE keep|new: every key the role needs. "new" replaces them all,
@@ -556,9 +621,9 @@ make_keys() {
             $maker "$LOGIN_KEY" "$USER_KEY_TYPE" "inside-login@${HOSTNAME:-$(uname -n)}"
             if [ "$2" = new ]; then : >"$LOGIN_AUTHORIZED_KEYS"; fi
             # Who may log in to the inside container: the login key, plus your own keys.
-            add_keys "$LOGIN_AUTHORIZED_KEYS" "$LOGIN_KEY.pub"
+            add_keys "$LOGIN_AUTHORIZED_KEYS" '' "$LOGIN_KEY.pub"
             for pub in "$HOME"/.ssh/id_*.pub; do
-                if [ -f "$pub" ]; then add_keys "$LOGIN_AUTHORIZED_KEYS" "$pub"; fi
+                if [ -f "$pub" ]; then add_keys "$LOGIN_AUTHORIZED_KEYS" '' "$pub"; fi
             done
             ;;
         server)
@@ -631,17 +696,43 @@ outside_ssh() {
         "$(env_get REVERSE_SERVER_USER_NAME)@$(env_get REVERSE_SERVER_HOST)" "$@"
 }
 
-# test_outside: can autossh log in to the outside server? The first time, the
-# server's host key is saved to TUNNEL_KNOWN_HOSTS (you confirm it on a terminal).
+# test_outside: does the outside server accept the tunnel key? The key has no
+# shell there, so this asks to run "true" and reads ssh's exit status: 255 means
+# it could not log in; 0 means "true" really ran, so the key still has a shell
+# (a warning); anything else is the server's refusal to run it, which is right.
+# The first time, the server's host key goes into TUNNEL_KNOWN_HOSTS (you
+# confirm it on a terminal).
 test_outside() {
-    local mode=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+    local mode=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new) status=0 errors
     if interactive; then mode=(-o StrictHostKeyChecking=ask); fi
-    outside_ssh "${mode[@]}" -o PreferredAuthentications=publickey -o ConnectTimeout=10 -- true
+    errors=$(mktemp)
+    outside_ssh "${mode[@]}" -o PreferredAuthentications=publickey -o ConnectTimeout=10 -T -- true 2>"$errors" || status=$?
+    case $status in
+        255)
+            sed 's/^/       /' "$errors" >&2
+            rm -f "$errors"
+            return 1
+            ;;
+        0) warn "the outside server accepts the tunnel key, but lets it run commands. Limit it to the tunnel: see \"A plain SSH server\" in the README." ;;
+        *) ok "the outside server accepts the tunnel key, for the tunnel only (no shell)" ;;
+    esac
+    rm -f "$errors"
 }
 
+# server_key_line: the line the outside server's authorized_keys needs for this
+# machine's tunnel key (what ./tunnel.sh authorize writes there).
+server_key_line() { echo "$(tunnel_key_options "$(env_get REVERSE_TUNNEL_SSH_PORT)") $(cat "$TUNNEL_KEY.pub")"; }
+
+# copy_key: append server_key_line to authorized_keys on a plain SSH server.
+# ssh-copy-id -f copies the line as it is, options included.
 copy_key() {
-    ssh-copy-id -i "$TUNNEL_KEY.pub" -o UserKnownHostsFile="$ROOT/$TUNNEL_KNOWN_HOSTS" \
-        -p "$(env_get REVERSE_SERVER_SSH_PORT)" "$(env_get REVERSE_SERVER_USER_NAME)@$(env_get REVERSE_SERVER_HOST)"
+    local dir status=0
+    dir=$(mktemp -d)
+    server_key_line >"$dir/tunnel.pub"
+    ssh-copy-id -f -i "$dir/tunnel.pub" -o UserKnownHostsFile="$ROOT/$TUNNEL_KNOWN_HOSTS" \
+        -p "$(env_get REVERSE_SERVER_SSH_PORT)" "$(env_get REVERSE_SERVER_USER_NAME)@$(env_get REVERSE_SERVER_HOST)" || status=$?
+    rm -rf "$dir"
+    return $status
 }
 
 # get_key_onto_server: show the tunnel key, put it on the outside server or wait
@@ -653,7 +744,9 @@ get_key_onto_server() {
     printf '\n    %s\n\n' "$pub"
     info "On the outside server, in its copy of this repo, run:"
     printf '\n    ./tunnel.sh authorize '\''%s'\''\n\n' "$pub"
-    info "A plain SSH server: add the line to ~$(env_get REVERSE_SERVER_USER_NAME)/.ssh/authorized_keys there."
+    info "A plain SSH server: add this line to ~$(env_get REVERSE_SERVER_USER_NAME)/.ssh/authorized_keys there"
+    info "(it limits the key to the tunnel port), see \"A plain SSH server\" in the README:"
+    printf '\n    %s\n\n' "$(server_key_line)"
     if [ "$COPY_KEY" = 1 ]; then
         choice=2
     elif interactive; then
@@ -671,7 +764,6 @@ get_key_onto_server() {
         warn "the outside server does not accept the tunnel key yet. autossh keeps trying, so the tunnel comes up once it does."
         return 0
     done
-    ok "the outside server accepts the tunnel key"
 }
 
 # ------------------------------------------------------------ the tunnel
@@ -737,7 +829,7 @@ print_server_help() {
     ssh_port=$(env_get REVERSE_SERVER_SSH_PORT) tunnel_port=$(env_get REVERSE_TUNNEL_SSH_PORT) user=$(env_get USER_NAME)
     accepted=$(grep -c . "$SERVER_AUTHORIZED_KEYS" || true)
     info "Open these ports in the firewall: $ssh_port (inside machines connect) and $tunnel_port (you connect)."
-    info "Tunnel keys accepted: $accepted. Add one with ./tunnel.sh authorize '<key>'."
+    info "Tunnel keys accepted: $accepted, each only for its tunnel port. Add one with ./tunnel.sh authorize '<key>'."
     info "The inside machine sees one of these host keys the first time:"
     for pub in "$(host_key_dir server)"/ssh_host_*_key.pub; do
         info "  $(ssh-keygen -l -f "$pub")"
@@ -751,7 +843,7 @@ print_server_help() {
 
 cmd_install() {
     parse_args "$@"
-    local role pasted=''
+    local role pasted='' options
     role=$(pick_role "$ROLE")
     need_docker
     if [ "$role" = client ]; then need_ssh ssh ssh-keygen; else need_ssh ssh-keygen; fi
@@ -767,13 +859,14 @@ cmd_install() {
         step "Put the tunnel key on the outside server"
         get_key_onto_server
     else
-        step "Inside machines this server accepts"
+        step "Inside machines this server accepts (tunnel port $(env_get REVERSE_TUNNEL_SSH_PORT) only)"
+        options=$(tunnel_key_options "$(env_get REVERSE_TUNNEL_SSH_PORT)")
         while IFS= read -r pasted; do
-            if [ -n "$pasted" ]; then add_keys "$SERVER_AUTHORIZED_KEYS" "$pasted"; fi
+            if [ -n "$pasted" ]; then add_keys "$SERVER_AUTHORIZED_KEYS" "$options" "$pasted"; fi
         done <<<"$AUTHORIZE_KEYS"
         if interactive && [ -z "$AUTHORIZE_KEYS" ]; then
             ask pasted "Paste an inside machine's tunnel key (./tunnel.sh pubkey there), or press Enter to add it later" ''
-            if [ -n "$pasted" ]; then add_keys "$SERVER_AUTHORIZED_KEYS" "$pasted"; fi
+            if [ -n "$pasted" ]; then add_keys "$SERVER_AUTHORIZED_KEYS" "$options" "$pasted"; fi
         fi
     fi
 
@@ -801,6 +894,7 @@ start_role() {
     fix_modes "$role"
     retire_old_container "$role"
     if [ "$role" = client ]; then info "autossh logs in with: $(cat "$TUNNEL_KEY.pub")"; fi
+    if [ "$role" = server ]; then restrict_server_keys; fi
     if [ "$FOREGROUND" = 1 ]; then
         compose_cmd "$role" up
     else
@@ -875,11 +969,30 @@ cmd_pubkey() {
     cat "$TUNNEL_KEY.pub"
 }
 
+# authorize [--tunnel-port PORT] KEY|FILE|-...: accept inside machines' tunnel
+# keys, each only for PORT (default: REVERSE_TUNNEL_SSH_PORT from .env).
 cmd_authorize() {
-    [ $# -gt 0 ] || die "usage: ./tunnel.sh authorize 'ssh-rsa AAAA... comment' | KEY_FILE | -"
+    local port='' keys=() problem
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --tunnel-port=*) port=${1#*=} ;;
+            --tunnel-port)
+                [ $# -ge 2 ] || die "$1 needs a value"
+                port=$2
+                shift
+                ;;
+            *) keys+=("$1") ;;
+        esac
+        shift
+    done
+    [ ${#keys[@]} -gt 0 ] || die "usage: ./tunnel.sh authorize [--tunnel-port PORT] 'ssh-rsa AAAA... comment' | KEY_FILE | -"
+    port=${port:-$(value_for REVERSE_TUNNEL_SSH_PORT)}
+    problem=$(check_value REVERSE_TUNNEL_SSH_PORT "$port") || die "$problem"
     need_ssh ssh-keygen
     mkdir -p "$(dirname "$SERVER_AUTHORIZED_KEYS")"
-    add_keys "$SERVER_AUTHORIZED_KEYS" "$@"
+    add_keys "$SERVER_AUTHORIZED_KEYS" "$(tunnel_key_options "$port")" "${keys[@]}"
+    restrict_server_keys
+    info "Each key may only open its tunnel port (this one: $port), with no shell."
     info "sshd reads $SERVER_AUTHORIZED_KEYS at every login: no restart needed."
 }
 
@@ -895,14 +1008,15 @@ cmd_copy_key() {
 }
 
 cmd_connect_outside() {
+    [ $# -eq 0 ] || die "connect-outside takes no command: the tunnel key has no shell on the outside server"
     need_ssh ssh
     need_client_env
     echo "---- Public key used by autossh"
     cat "$TUNNEL_KEY.pub"
     echo "---- Outside server (from .env)"
     echo "Host: $(env_get REVERSE_SERVER_HOST)  User: $(env_get REVERSE_SERVER_USER_NAME)  SSH port: $(env_get REVERSE_SERVER_SSH_PORT)"
-    echo "---- Connecting with the tunnel key"
-    outside_ssh -- "$@"
+    echo "---- Logging in with the tunnel key (the outside server gives it no shell)"
+    test_outside || die "the outside server does not accept the tunnel key"
 }
 
 cmd_shell() {
