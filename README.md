@@ -39,17 +39,17 @@ One command sets up each end, and one removes it:
 ```mermaid
 flowchart LR
     you["Your computer"]
-    subgraph public["Outside server: public address, e.g. 203.0.113.10"]
+    subgraph outsidenet ["Outside server: public address, e.g. 203.0.113.10"]
         server["reverse-outside-server<br/>:22222 SSH for the inside machine<br/>:22224 tunnel port"]
     end
-    subgraph lan["Inside network, behind NAT"]
+    subgraph insidenet ["Inside network, behind NAT"]
         client["reverse-inside-tunnel<br/>sshd :2222 + autossh"]
         other["other machines<br/>e.g. 192.168.50.20"]
     end
-    client -- "1 dials out: ssh -R *:22224:localhost:2222" --> server
-    you -- "2 ssh -p 22224" --> server
-    server -. "3 back through the tunnel" .-> client
-    client -. "4 hop on: ssh -L" .-> other
+    client -->|"1: dials out, ssh -R *:22224:localhost:2222"| server
+    you -->|"2: ssh -p 22224"| server
+    server -.->|"3: back through the tunnel"| client
+    client -.->|"4: hop on, ssh -L"| other
 ```
 
 1. The inside container logs in to the outside server on port 22222 with its
