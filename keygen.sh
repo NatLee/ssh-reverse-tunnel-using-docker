@@ -20,7 +20,6 @@ echo $(cat ~/.ssh/id_rsa.pub) >>./src/user_ssh_key/authorized_keys
 
 # ==========================
 # Generate keys for host
-ssh-keygen -f ./src/ssh_host_keys/ssh_host_dsa_key -t dsa -C "root@openssh-server" -N '' <<<$'\ny' >/dev/null 2>&1
 ssh-keygen -f ./src/ssh_host_keys/ssh_host_rsa_key -t rsa -C "root@openssh-server" -N '' <<<$'\ny' >/dev/null 2>&1
 ssh-keygen -f ./src/ssh_host_keys/ssh_host_ecdsa_key -t ecdsa -C "root@openssh-server" -N '' <<<$'\ny' >/dev/null 2>&1
 ssh-keygen -f ./src/ssh_host_keys/ssh_host_ed25519_key -t ed25519 -C "root@openssh-server" -N '' <<<$'\ny' >/dev/null 2>&1
