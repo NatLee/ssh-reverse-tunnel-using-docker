@@ -1,0 +1,4 @@
+# The scripts and sshd settings run inside Linux containers. Keep LF line
+# endings, also when the repo is cloned on Windows.
+* text=auto eol=lf
+*.png binary

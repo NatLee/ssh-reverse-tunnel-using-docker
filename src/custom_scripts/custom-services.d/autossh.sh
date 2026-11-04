@@ -18,8 +18,8 @@ export AUTOSSH_GATETIME=0
 # -M 0: no monitor port; ServerAlive* notices a dead link within ~45 seconds.
 # ExitOnForwardFailure: if the tunnel port cannot be opened (an old session
 # still holds it), exit and retry instead of staying connected without a tunnel.
-# accept-new: remember the outside server's host key the first time, then
-# refuse a different one.
+# accept-new: remember the outside server's host key the first time (or take
+# the one ./tunnel.sh install client checked), then refuse a different one.
 exec /usr/bin/autossh -M 0 \
     -o "ServerAliveInterval 15" \
     -o "ServerAliveCountMax 3" \

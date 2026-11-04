@@ -1,22 +1,34 @@
+# Outside server: the SSH server the inside machine dials out to. It publishes
+# the tunnel port, which leads back to the inside machine.
+#
+# Set it up with ./tunnel.sh install server. That writes .env, makes the host
+# keys and starts this file. The variables below come from .env (see .env.example).
+name: ssh-reverse-tunnel-server
 services:
   reverse-server:
-    restart: unless-stopped
-    image: lscr.io/linuxserver/openssh-server
+    image: ${OPENSSH_IMAGE:?set it in .env or run ./tunnel.sh install server}
     container_name: reverse-outside-server
     hostname: outside-server
+    restart: unless-stopped
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Asia/Taipei
+      # The container user gets your uid/gid, so the files it writes into the
+      # mounted folders stay yours.
+      - PUID=${PUID:?set it in .env or run ./tunnel.sh install server}
+      - PGID=${PGID:?set it in .env or run ./tunnel.sh install server}
+      - TZ=${TZ:?set it in .env or run ./tunnel.sh install server}
+      # The inside machines log in as this user, with the keys in
+      # src/server-config/root_ssh_key/authorized_keys (./tunnel.sh authorize).
+      - USER_NAME=${USER_NAME:?set it in .env or run ./tunnel.sh install server}
       - PASSWORD_ACCESS=false
       - SUDO_ACCESS=true
-      - USER_NAME=${USER_NAME}
     volumes:
-       - ./logs/server:/config/logs
-       - ./src/server-config/root_ssh_key:/config/.ssh
-       - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
-       - ./src/server-config/sshd_config.d:/config/sshd/sshd_config.d:ro
+      - ./logs/server:/config/logs
+      - ./src/server-config/root_ssh_key:/config/.ssh
+      - ./src/server-config/ssh_host_keys:/config/ssh_host_keys
+      - ./src/server-config/sshd_config.d:/config/sshd/sshd_config.d:ro
     ports:
-      # Here you can extend your own ports
-      - ${REVERSE_SERVER_SSH_PORT}:2222 # for SSH connections, REVERSE_SERVER_SSH_PORT
-      - ${REVERSE_TUNNEL_SSH_PORT}:${REVERSE_TUNNEL_SSH_PORT} # custom reversing ports, REVERSE_TUNNEL_SSH_PORT
+      # The image's sshd listens on 2222 inside the container.
+      - ${REVERSE_SERVER_SSH_PORT:?set it in .env or run ./tunnel.sh install server}:2222
+      # The tunnel port: the inside machine opens it here with ssh -R. Add more
+      # lines like this one if you run several tunnels.
+      - ${REVERSE_TUNNEL_SSH_PORT:?set it in .env or run ./tunnel.sh install server}:${REVERSE_TUNNEL_SSH_PORT}

@@ -1,10 +1,6 @@
-#!/bin/bash
-
-# Placeholder for authorized keys
-rm -f ./src/server-config/root_ssh_key/authorized_keys
-touch ./src/server-config/root_ssh_key/authorized_keys
-
-# Generate keys for outside server
-ssh-keygen -f ./src/server-config/ssh_host_keys/ssh_host_rsa_key -t rsa -C "root@openssh-outside-server" -N '' <<<$'\ny' >/dev/null 2>&1
-ssh-keygen -f ./src/server-config/ssh_host_keys/ssh_host_ecdsa_key -t ecdsa -C "root@openssh-outside-server" -N '' <<<$'\ny' >/dev/null 2>&1
-ssh-keygen -f ./src/server-config/ssh_host_keys/ssh_host_ed25519_key -t ed25519 -C "root@openssh-outside-server" -N '' <<<$'\ny' >/dev/null 2>&1
+#!/usr/bin/env bash
+# Old entry point, kept so existing notes and habits still work. It only calls
+# ./tunnel.sh keygen server (see "Coming from the old scripts" in the README) and can go
+# in a later release.
+echo "keygen-server.sh is now: ./tunnel.sh keygen server" >&2
+exec "$(dirname "$0")/tunnel.sh" keygen server "$@"
